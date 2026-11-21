@@ -56,7 +56,23 @@ def parse_args():
                    help="Number of cells to train+evaluate in parallel")
     p.add_argument("--out", default=os.path.join(ROOT, "results", "results.csv"))
     p.add_argument("--dry-run", action="store_true", help="Print the plan, run nothing")
+    p.add_argument("--resume", action="store_true",
+                   help="Skip cells whose partial CSV already holds a full episode count "
+                        "(lets an interrupted sweep continue instead of restarting)")
     return p.parse_args()
+
+
+def cell_complete(partial_dir, agent, static, drain, seed, episodes) -> bool:
+    """True if this cell's partial CSV exists with header + >= `episodes` data rows."""
+    out = os.path.join(partial_dir, cell_tag(agent, static, drain, seed) + ".csv")
+    if not os.path.exists(out):
+        return False
+    try:
+        with open(out, newline="") as f:
+            n_lines = sum(1 for _ in f)
+    except OSError:
+        return False
+    return n_lines >= episodes + 1
 
 
 def cell_tag(agent, static, drain, seed) -> str:
@@ -165,6 +181,19 @@ def main():
 
     partial_dir = os.path.join(os.path.dirname(args.out), "partial")
     os.makedirs(partial_dir, exist_ok=True)
+
+    if args.resume:
+        total = len(cells)
+        cells = [c for c in cells
+                 if not cell_complete(partial_dir, *c, args.episodes)]
+        skipped = total - len(cells)
+        if skipped:
+            print(f"  resume: skipping {skipped}/{total} already-complete cells; "
+                  f"{len(cells)} remaining\n")
+        if not cells:
+            merge_partials(partial_dir, args.out)
+            print("\nSweep complete (all cells already done).")
+            return
 
     done = 0
     if args.jobs <= 1:
