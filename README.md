@@ -78,10 +78,33 @@ The full research protocol — hypotheses, the confound fix, the run matrix, met
 figures — is in [`EXPERIMENTS.md`](EXPERIMENTS.md). Results and figures will be added here
 as the sweep completes.
 
+## Evaluation & sweep
+
+```bash
+# Batch-evaluate a trained model -> results/results.csv
+python scripts/evaluate.py --model saves/<run>/final_model.zip --algo ppo \
+    --agent mlp --ablation perception_only --static 50 --episodes 100
+
+# Run the full matrix (train + evaluate every cell). --dry-run prints the plan.
+python scripts/run_sweep.py --experiment A --dry-run
+python scripts/run_sweep.py --experiment A --seeds 0 1 2 --timesteps 500000
+
+# Render figures from results/results.csv -> results/figures/
+python scripts/plots.py
+```
+
+### Ablation modes
+
+`memory_stability` is decoupled into independent jobs so results are interpretable
+(`--ablation`): `full` (native), `perception_only` (degrade obs only — the headline
+condition), `survival_only` (full obs, collapse still kills), `none` (control). `--static N`
+freezes stability at `N` for a clean per-episode degradation level.
+
 ## Status
 
-Environment, baselines and training loop are implemented. The evaluation harness, ablation
-modes and the experiment sweep are in progress (see `EXPERIMENTS.md`).
+Environment, baselines, training loop, ablation modes, batch evaluation, sweep
+orchestration and plotting are implemented and smoke-tested. Next: run the sweep and add
+results/figures (see [`EXPERIMENTS.md`](EXPERIMENTS.md)).
 
 ## Limitations
 

@@ -43,16 +43,37 @@ def load_config(path: Optional[str] = None) -> dict:
 class ZahramunEnv(gym.Env):
     metadata = {"render_modes": ["human", "ansi"], "render_fps": 10}
 
+    # Ablation modes — decouple the three jobs memory_stability does.
+    #   full            : obs degrades, collapse kills, stability reward  (native game)
+    #   perception_only : obs degrades, NO collapse, NO stability reward  (isolates perception)
+    #   survival_only   : full obs,     collapse kills, stability reward   (isolates resource mgmt)
+    #   none            : full obs,     NO collapse, NO stability reward   (control / upper bound)
+    ABLATION_MODES = ("full", "perception_only", "survival_only", "none")
+
     def __init__(
         self,
         config_path: Optional[str] = None,
         render_mode: Optional[str] = None,
         seed: Optional[int] = None,
+        ablation_mode: str = "full",
+        static_level: Optional[float] = None,
     ):
         super().__init__()
         self.cfg = load_config(config_path)
         self.render_mode = render_mode
         self._seed = seed
+
+        if ablation_mode not in self.ABLATION_MODES:
+            raise ValueError(
+                f"ablation_mode must be one of {self.ABLATION_MODES}, got {ablation_mode!r}")
+        self.ablation_mode = ablation_mode
+        # static_level: if set, memory stability is frozen at this value for the whole
+        # episode (clean static-degradation experiments). None = native dynamic drain.
+        self.static_level = static_level
+
+        self._degrade_obs       = ablation_mode in ("full", "perception_only")
+        self._collapse_kills    = ablation_mode in ("full", "survival_only")
+        self._stability_reward  = ablation_mode in ("full", "survival_only")
 
         map_cfg = self.cfg["env"]
         self.map_w = map_cfg["map_width"]
@@ -128,7 +149,8 @@ class ZahramunEnv(gym.Env):
         # ── Passive memory drain ──────────────────────────────────────────────
         self.mem.step_drain()
         reward += self.cfg["rewards"]["step_penalty"]
-        reward += self.mem.normalized() * self.cfg["rewards"]["memory_stability_bonus"]
+        if self._stability_reward:
+            reward += self.mem.normalized() * self.cfg["rewards"]["memory_stability_bonus"]
 
         state.step += 1
         agent.steps_alive += 1
@@ -141,7 +163,7 @@ class ZahramunEnv(gym.Env):
             terminated = True
             state.phase = GamePhase.GAME_OVER
 
-        elif self.mem.is_collapsed:
+        elif self._collapse_kills and self.mem.is_collapsed:
             reward += self.cfg["rewards"]["memory_collapse_penalty"]
             terminated = True
             state.phase = GamePhase.GAME_OVER
@@ -204,6 +226,7 @@ class ZahramunEnv(gym.Env):
                             state, enemies_at[0], self.mem)
                     else:
                         agent.x, agent.y = nx, ny
+                        state.record_visit(nx, ny)
 
                         # Artifact pickup
                         if ((nx, ny) == state.artifact_pos
@@ -358,7 +381,11 @@ class ZahramunEnv(gym.Env):
 
         self.state = state
         self.mem   = MemorySystem(cfg, self._episode_rng)
-        self.obs_builder = ObservationBuilder(self.map_w, self.map_h, self.mem, self._episode_rng)
+        if self.static_level is not None:
+            self.mem.freeze_at(self.static_level)
+        self.obs_builder = ObservationBuilder(
+            self.map_w, self.map_h, self.mem, self._episode_rng,
+            degrade_enabled=self._degrade_obs)
         self.combat_sys  = JRPGCombat(cfg, self._episode_rng)
 
         state.update_action_mask()
@@ -384,6 +411,11 @@ class ZahramunEnv(gym.Env):
             "is_victory": self.state.phase.name == "VICTORY",
             "is_death": a.hp <= 0,
             "is_memory_collapse": self.mem.is_collapsed,
+            "ablation_mode": self.ablation_mode,
+            "static_level": self.static_level,
+            "revisit_count": self.state.revisit_count,
+            "unique_visited": len(self.state.visited),
+            "coverage": self.state.coverage(),
         }
         if self.state.phase == GamePhase.COMBAT and self.state.combat:
             info["combat_log"] = self.state.combat.combat_log[-3:]

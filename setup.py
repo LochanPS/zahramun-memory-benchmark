@@ -12,6 +12,7 @@ setup(
         "numpy>=1.24",
         "scipy>=1.10",
         "PyYAML>=6.0",
+        "matplotlib>=3.8",
     ],
     python_requires=">=3.11",
 )

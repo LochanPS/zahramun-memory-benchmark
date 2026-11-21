@@ -44,10 +44,13 @@ os.makedirs(SAVES_DIR, exist_ok=True)
 
 # ─── Env factory ─────────────────────────────────────────────────────────────
 
-def make_env(rank: int, seed: int, drain_override: float | None = None):
+def make_env(rank: int, seed: int, drain_override: float | None = None,
+             ablation_mode: str = "full", static_level: float | None = None):
     """Returns a callable that creates a monitored ZahramunEnv."""
     def _init():
-        env = ZahramunEnv(seed=seed + rank)
+        env = ZahramunEnv(seed=seed + rank,
+                          ablation_mode=ablation_mode,
+                          static_level=static_level)
         if drain_override is not None:
             env.cfg["memory_drought"]["passive_drain_per_step"] = drain_override
         return Monitor(env)
@@ -148,6 +151,11 @@ def parse_args():
                    help="Algorithm to train")
     p.add_argument("--drain",      type=float, default=None,
                    help="Override passive memory drain rate (default from config)")
+    p.add_argument("--ablation",   type=str,   default="full",
+                   choices=["full", "perception_only", "survival_only", "none"],
+                   help="Ablation mode — decouples perception / survival / reward")
+    p.add_argument("--static",     type=float, default=None,
+                   help="Freeze memory stability at this value (static-degradation experiment)")
     p.add_argument("--timesteps",  type=int,   default=None,
                    help="Total training timesteps (overrides config)")
     p.add_argument("--envs",       type=int,   default=None,
@@ -166,8 +174,13 @@ def load_algo_cfg(algo: str) -> dict:
         return yaml.safe_load(f)
 
 
-def build_run_name(algo: str, drain: float | None, tag: str) -> str:
+def build_run_name(algo: str, drain: float | None, tag: str,
+                   ablation: str = "full", static: float | None = None) -> str:
     name = algo
+    if ablation != "full":
+        name += f"_{ablation}"
+    if static is not None:
+        name += f"_static{static:g}"
     if drain is not None:
         name += f"_drain{drain:.3f}"
     if tag:
@@ -186,7 +199,7 @@ def main():
     drain      = args.drain      # None = use default.yaml value
     frame_k    = cfg.get("frame_stack", 1)
 
-    run_name   = build_run_name(args.algo, drain, args.tag)
+    run_name   = build_run_name(args.algo, drain, args.tag, args.ablation, args.static)
     log_path   = os.path.join(LOGS_DIR,  run_name)
     save_path  = os.path.join(SAVES_DIR, run_name)
     os.makedirs(log_path,  exist_ok=True)
@@ -209,7 +222,9 @@ def main():
     print(f"{'='*60}\n")
 
     # ── Build vectorised training env ─────────────────────────────────────────
-    env_fns = [make_env(i, args.seed, drain) for i in range(n_envs)]
+    env_fns = [make_env(i, args.seed, drain,
+                        ablation_mode=args.ablation, static_level=args.static)
+               for i in range(n_envs)]
 
     # Use DummyVecEnv — SubprocVecEnv unreliable on Windows with complex envs
     from stable_baselines3.common.vec_env import DummyVecEnv
@@ -221,7 +236,9 @@ def main():
     # ── Build eval env (single env, deterministic seeds) ──────────────────────
     eval_vec = None
     if not args.no_eval:
-        eval_env_fns = [make_env(n_envs + i, args.seed + 1000, drain) for i in range(2)]
+        eval_env_fns = [make_env(n_envs + i, args.seed + 1000, drain,
+                                 ablation_mode=args.ablation, static_level=args.static)
+                        for i in range(2)]
         from stable_baselines3.common.vec_env import DummyVecEnv
         eval_vec = DummyVecEnv(eval_env_fns)
         if frame_k > 1:
@@ -336,6 +353,8 @@ def main():
     meta = {
         "algo": args.algo,
         "drain": drain,
+        "ablation": args.ablation,
+        "static": args.static,
         "timesteps": timesteps,
         "n_envs": n_envs,
         "seed": args.seed,

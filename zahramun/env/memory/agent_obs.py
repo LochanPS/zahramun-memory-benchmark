@@ -50,12 +50,16 @@ FOV_RADIUS = 7
 
 class ObservationBuilder:
     def __init__(self, map_w: int, map_h: int, memory_system: MemorySystem,
-                 rng: np.random.Generator):
+                 rng: np.random.Generator, degrade_enabled: bool = True):
         self.map_w = map_w
         self.map_h = map_h
         self.mem = memory_system
         self.filter = memory_system.filter
         self.rng = rng
+        # When False, remembered cells are returned perfectly (no decay/noise/mask);
+        # never-seen cells are still UNKNOWN. Isolates perception corruption from the
+        # underlying exploration/mapping task (ablation modes survival_only / none).
+        self.degrade_enabled = degrade_enabled
 
         map_cells = map_w * map_h
         self.obs_size = (
@@ -67,6 +71,18 @@ class ObservationBuilder:
             + 8                       # combat state
             + 10                      # action mask
         )
+
+    def _cell(self, raw: float, age: int, level) -> float:
+        if not self.degrade_enabled:
+            return raw if age >= 0 else UNKNOWN
+        return self.filter.apply_to_cell(raw, age, self.mem.stability, level)
+
+    def _pos(self, x: int, y: int, age: int, level) -> tuple[float, float]:
+        if not self.degrade_enabled:
+            if age < 0:
+                return (UNKNOWN, UNKNOWN)
+            return (float(x), float(y))
+        return self.filter.apply_to_position(x, y, age, self.mem.stability, level)
 
     def build(self, state: GameState) -> np.ndarray:
         obs = np.zeros(self.obs_size, dtype=np.float32)
@@ -101,11 +117,13 @@ class ObservationBuilder:
                 ci = r * self.map_w + c
                 age = state.cell_age(c, r)
                 raw_tile = float(state.tiles[r, c]) / tile_max
-                deg = self.filter.apply_to_cell(raw_tile, age, self.mem.stability, level)
+                deg = self._cell(raw_tile, age, level)
                 tile_ch[ci] = deg
 
                 if age < 0:
                     conf_ch[ci] = 0.0
+                elif not self.degrade_enabled:
+                    conf_ch[ci] = 1.0
                 else:
                     conf_ch[ci] = max(0.0, 1.0 - age * self.filter.cfg["decay_rate"])
 
@@ -113,8 +131,7 @@ class ObservationBuilder:
                     ents = state.get_entities_at(c, r)
                     if ents:
                         raw_et = float(ents[0].entity_type) / etype_max
-                        entity_ch[ci] = self.filter.apply_to_cell(
-                            raw_et, age, self.mem.stability, level)
+                        entity_ch[ci] = self._cell(raw_et, age, level)
 
         obs[idx:idx + map_cells] = tile_ch;   idx += map_cells
         obs[idx:idx + map_cells] = conf_ch;   idx += map_cells
@@ -131,14 +148,11 @@ class ObservationBuilder:
             if i < len(enemies):
                 e = enemies[i]
                 age = state.cell_age(e.x, e.y)
-                ex, ey = self.filter.apply_to_position(
-                    e.x, e.y, age, self.mem.stability, level)
+                ex, ey = self._pos(e.x, e.y, age, level)
                 obs[idx]   = ex / self.map_w if ex != UNKNOWN else UNKNOWN
                 obs[idx+1] = ey / self.map_h if ey != UNKNOWN else UNKNOWN
-                obs[idx+2] = self.filter.apply_to_cell(
-                    float(e.entity_type) / etype_max, age, self.mem.stability, level)
-                obs[idx+3] = self.filter.apply_to_cell(
-                    e.hp / e.hp_max, age, self.mem.stability, level)
+                obs[idx+2] = self._cell(float(e.entity_type) / etype_max, age, level)
+                obs[idx+3] = self._cell(e.hp / e.hp_max, age, level)
             else:
                 obs[idx:idx+4] = UNKNOWN
             idx += 4
@@ -149,8 +163,7 @@ class ObservationBuilder:
         elif state.artifact_pos:
             ax_p, ay_p = state.artifact_pos
             age = state.cell_age(ax_p, ay_p)
-            ex, ey = self.filter.apply_to_position(
-                ax_p, ay_p, age, self.mem.stability, level)
+            ex, ey = self._pos(ax_p, ay_p, age, level)
             obs[idx]   = ex / self.map_w if ex != UNKNOWN else UNKNOWN
             obs[idx+1] = ey / self.map_h if ey != UNKNOWN else UNKNOWN
         else:
@@ -163,8 +176,7 @@ class ObservationBuilder:
         elif state.guardian_id and state.guardian_id in state.entities:
             g = state.entities[state.guardian_id]
             age = state.cell_age(g.x, g.y)
-            gx, gy = self.filter.apply_to_position(
-                g.x, g.y, age, self.mem.stability, level)
+            gx, gy = self._pos(g.x, g.y, age, level)
             obs[idx]   = gx / self.map_w if gx != UNKNOWN else UNKNOWN
             obs[idx+1] = gy / self.map_h if gy != UNKNOWN else UNKNOWN
         else:

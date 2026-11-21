@@ -20,6 +20,15 @@ class MemorySystem:
         self.stability_max = cfg["resources"]["memory_stability_max"]
         self.stability: float = float(self.stability_max)
         self.filter = DegradationFilter(self.drought_cfg, rng)
+        # When frozen (static-degradation experiments), stability is pinned to a
+        # fixed value and all drain / damage / restore are no-ops. This makes the
+        # degradation level a clean, constant independent variable.
+        self.frozen: bool = False
+
+    def freeze_at(self, value: float) -> None:
+        """Pin stability at `value` for the whole episode (static experiment)."""
+        self.frozen = True
+        self.stability = float(value)
 
     @property
     def level(self) -> DegradationLevel:
@@ -31,18 +40,24 @@ class MemorySystem:
 
     def step_drain(self) -> float:
         """Apply passive drain. Returns amount drained."""
+        if self.frozen:
+            return 0.0
         drain = self.filter.compute_passive_drain(self.level)
         self.stability = max(0.0, self.stability - drain)
         return drain
 
     def damage(self, amount: float) -> float:
         """Direct stability damage (memory eater, hazard). Returns actual damage dealt."""
+        if self.frozen:
+            return 0.0
         actual = min(self.stability, amount)
         self.stability = max(0.0, self.stability - amount)
         return actual
 
     def restore(self, amount: float) -> float:
         """Restore stability (memory item). Returns actual restored."""
+        if self.frozen:
+            return 0.0
         before = self.stability
         self.stability = min(self.stability_max, self.stability + amount)
         return self.stability - before

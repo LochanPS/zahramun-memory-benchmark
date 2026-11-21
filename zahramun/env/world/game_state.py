@@ -182,6 +182,10 @@ class GameState:
     # Hazard tile positions
     hazard_positions: set = field(default_factory=set)
 
+    # Exploration tracking (behavioral metrics — forgetting signature)
+    visited: set = field(default_factory=set)   # unique cells the agent has stood on
+    revisit_count: int = 0                       # times agent re-entered a known cell
+
     def add_entity(self, entity_type: EntityType, x: int, y: int,
                    hp: int, damage: int = 0, defense: int = 0,
                    stability_drain: int = 0, item_value: int = 0) -> Entity:
@@ -216,6 +220,20 @@ class GameState:
         if last < 0:
             return -1
         return self.step - last
+
+    def record_visit(self, x: int, y: int) -> None:
+        """Track unique vs repeated cell visits — behavioral forgetting signal."""
+        if (x, y) in self.visited:
+            self.revisit_count += 1
+        else:
+            self.visited.add((x, y))
+
+    def coverage(self) -> float:
+        """Fraction of the map the agent has ever had in view (0..1)."""
+        total = self.map_width * self.map_height
+        if total == 0:
+            return 0.0
+        return float((self.last_seen >= 0).sum()) / total
 
     def update_action_mask(self) -> None:
         """Recompute valid actions for current phase."""
