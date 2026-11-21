@@ -15,6 +15,7 @@ dist/
 runs/
 saves/
 results/*.csv
+results/partial/
 *.zip
 
 # Keep results figures/tables tracked, ignore raw sweeps
