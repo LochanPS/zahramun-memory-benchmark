@@ -1,0 +1,32 @@
+# RecurrentPPO — LSTM memory, key comparison baseline
+# Hypothesis: maintains performance under drought where feedforward fails
+
+algorithm: RecurrentPPO
+policy: MlpLstmPolicy
+
+# SB3-contrib RecurrentPPO hyperparams
+learning_rate: 3.0e-4
+n_steps: 512         # shorter rollouts for LSTM stability
+batch_size: 64
+n_epochs: 10
+gamma: 0.99
+gae_lambda: 0.95
+clip_range: 0.2
+ent_coef: 0.01
+vf_coef: 0.5
+max_grad_norm: 0.5
+
+# LSTM config
+lstm_hidden_size: 256
+n_lstm_layers: 1
+
+# Network (shared layers before/after LSTM)
+net_arch: [128]
+
+# Training
+n_envs: 4
+total_timesteps: 1_000_000
+
+log_interval: 10
+eval_freq: 50_000
+eval_episodes: 20

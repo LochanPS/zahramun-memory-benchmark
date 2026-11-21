@@ -1,0 +1,28 @@
+# Virtual environments (root-anchored so they don't match the zahramun/env/ package)
+/.venv/
+/venv/
+/env/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Training artifacts (large binaries — reproducible via train.py)
+runs/
+saves/
+results/*.csv
+*.zip
+
+# Keep results figures/tables tracked, ignore raw sweeps
+!results/figures/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

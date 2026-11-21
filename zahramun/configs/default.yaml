@@ -1,0 +1,61 @@
+# Zahramun Benchmark — Default Config v2
+
+env:
+  map_width: 40
+  map_height: 25
+  max_steps: 2000
+  seed: null
+
+resources:
+  hp_max: 100
+  memory_stability_max: 100
+
+memory_drought:
+  passive_drain_per_step: 0.05
+  layer_minor:    80
+  layer_moderate: 60
+  layer_heavy:    40
+  layer_critical: 20
+  noise_std_minor:    0.10
+  noise_std_moderate: 0.30
+  noise_std_heavy:    0.60
+  decay_rate:      0.02
+  full_forget_age: 100
+  hazard_drain:    10.0    # stability lost per step on hazard tile
+
+enemies:
+  scorpion_count_min:     3
+  scorpion_count_max:     7
+  memory_eater_count_min: 1
+  memory_eater_count_max: 3
+  wanderer_count_min:     2
+  wanderer_count_max:     5
+
+combat:
+  scorpion_hp:     20
+  scorpion_damage: 8
+  memory_eater_hp:              15
+  memory_eater_damage:          0
+  memory_eater_stability_drain: 15
+  wanderer_hp:     25
+  wanderer_damage: 10
+  guardian_hp:              80
+  guardian_damage:          13
+  guardian_stability_drain: 3
+
+rewards:
+  artifact_pickup:            50.0
+  guardian_defeat:           100.0
+  episode_complete:          200.0
+  enemy_defeat:                5.0
+  death_penalty:            -100.0
+  memory_collapse_penalty:   -80.0
+  step_penalty:               -0.1
+  memory_stability_bonus:     0.05
+
+render:
+  window_width:  1280
+  window_height: 720
+  tile_size:     20
+  fps:           30
+  show_grid:     false

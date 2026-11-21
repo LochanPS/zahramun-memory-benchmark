@@ -1,0 +1,9 @@
+# Core RL stack. Versions to be pinned before the final experiment sweep
+# (see EXPERIMENTS.md §6.7). Pin with `pip freeze` once results are produced.
+gymnasium>=0.29
+stable-baselines3>=2.3
+sb3-contrib>=2.3
+torch>=2.2
+numpy>=1.26
+pyyaml>=6.0
+pygame>=2.5
